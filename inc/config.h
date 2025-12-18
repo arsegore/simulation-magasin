@@ -25,4 +25,9 @@
 #define NB_CLIENTS_MAX      200
 #define NB_CAISSIERS_MAX    200
 
+#define EXE_CLIENT          "bin/client"
+#define EXE_VENDEUR         "bin/vendeur"
+#define EXE_CAISSIER        "bin/caissier"
+#define FICHIER_LOGS        "logs.txt"
+
 #endif

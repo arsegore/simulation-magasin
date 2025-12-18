@@ -10,7 +10,35 @@
 #include "sem.h"
 #include "smp.h"
 
+int numero_caissier;
+int id_smp_taux_occupation_vendeurs;
+int *adr_smp_taux_occupation_vendeurs;
+int id_mutex_taux_occupation_vendeurs;
+int id_smp_grimoire;
+int *adr_smp_grimoire;
+int id_sem_dispo_vendeurs;
+int id_sem_dispo_caissiers;
+int id_file_msg;
+int recommencer = 1;
+int id_sem_paiement;    
+int id_smp_transactions;
+int *adr_smp_transactions;
+message msg;
+sigset_t tout_bloquer, att_sigusr1, att_sigusr2;
 
+void handler_sigusr2(){
+    recommencer = 0;
+}
+
+void handler_sigusr1(){
+}
+
+void nettoyer(){
+    log("[Caissier %d] Nettoyage...\n", numero_caissier);
+    detacher_smp(adr_smp_taux_occupation_vendeurs);
+    detacher_smp(adr_smp_grimoire);
+    detacher_smp(adr_smp_transactions);
+}
 
 int determiner_prix(){
     return rand() % (PRIX_MAX - PRIX_MIN) + PRIX_MIN;
@@ -18,26 +46,9 @@ int determiner_prix(){
 
 int main(int argc, char *argv[]){
     int numero_client;
-    int rayon_interet;
-    int id_smp_taux_occupation_vendeurs;
-    int *adr_smp_taux_occupation_vendeurs;
-    int numero_vendeur;
-    int id_mutex_taux_occupation_vendeurs;
-    int id_smp_grimoire;
-    int *adr_smp_grimoire;
-    int id_sem_dispo_vendeurs;
-    int id_sem_dispo_caissiers;
-    int id_file_msg;
-    int recommencer;
-    int numero_caissier;
     int nb_vendeurs, nb_caissiers;
-    int num_rayon_client;
-    int num_rayon_vendeur;
-    int id_sem_paiement;    
-    int id_smp_transactions;
-    int *adr_smp_transactions;
     int montant;
-    message msg;
+    int attente;
 
     if (argc > 0) {
         numero_caissier = atoi(argv[1]);
@@ -47,12 +58,33 @@ int main(int argc, char *argv[]){
     }
     srand(time(NULL));
 
+    atexit(nettoyer);   // vu qu'on exit dans tous les cas (erreur ou normal), ça permet d'assurer le nettoyage dans ttes les situations
+
+    // 0. Gestion des signaux
+    sigfillset(&tout_bloquer);
+    sigprocmask(SIG_SETMASK, &tout_bloquer, NULL); // On bloque TOUS les signaux
+    sigfillset(&att_sigusr1);
+    sigdelset(&att_sigusr1, SIGUSR1);
+    sigfillset(&att_sigusr2);
+    sigdelset(&att_sigusr2, SIGUSR2);
+    signal(SIGUSR1, handler_sigusr1);
+    signal(SIGUSR2, handler_sigusr2);
+
     // 1. Récupération des IPC    
     id_file_msg = init_file_msg(ID_FILE_MSG, FILS);
     id_sem_paiement = init_sem(ID_SEM_PAIEMENT, nb_vendeurs, FILS, 1);
     id_sem_dispo_caissiers = init_sem(ID_SEM_CAISSIERS, nb_caissiers, FILS, 0);
     id_smp_transactions = init_smp(TAILLE_TAB_CLIENT, FILS, ID_SMP_TRANSACTIONS);
     adr_smp_transactions = (int *) attacher_smp(id_smp_transactions);
+
+    log("[Caissier %d] Création...\n", numero_caissier);
+
+    /**********************
+     * ATTENTE DU DEMARRAGE
+     **********************/
+    sigsuspend(&att_sigusr1);
+
+    log("[Caissier %d] Démarrage. \n", numero_caissier);
 
     while (recommencer) {
         // 2. Le caissier est prêt à accueillir un client
@@ -62,9 +94,13 @@ int main(int argc, char *argv[]){
         numero_client = msg.valeur; // pas besoin de la macro car on a doublé l'info
         // vérifier qu'il s'agit du bon type de msg ?
 
+        log("[Caissier %d] Le client %d est arrivé à ma caisse.\n", numero_caissier);
+
         // 3. Récupére le montant de la transaction
         montant = adr_smp_transactions[numero_client];
         adr_smp_transactions[numero_client] = -1;
+
+        log("[Caissier %d] J'ai trouvé une transaction d'un montant de %d pour le client %d\n", numero_caissier, montant, numero_client);
 
         // 4. On communqiue le prix au client
         envoyer_msg(id_file_msg,
@@ -75,12 +111,17 @@ int main(int argc, char *argv[]){
                     );
 
         // 5. Paiement
-        usleep(rand() % TEMPS_MAX_ATTENTE); // Attente aléatoire
+        log("[Caissier %d] Début du paiement, qui va durer %d ns\n", numero_caissier, attente);
+        attente = rand() % TEMPS_MAX_ATTENTE;
+        usleep(attente); // Attente aléatoire
             
         // Fin du paiement
         V(id_sem_paiement, numero_caissier, 1);
 
         // Et au suivant !
+        log("[Caissier %d] Paiement terminé, au suivant !\n", numero_caissier);
     }
+
+    exit(EXIT_SUCCESS);
 
 }

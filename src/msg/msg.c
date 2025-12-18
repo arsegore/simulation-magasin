@@ -34,7 +34,7 @@ message recevoir_msg(int id_file, int destinataire) {
 }
 
 int init_file_msg(int id, int qui) {
-    int msgid;
+    int id_file;
     int flags;
     key_t cle = generer_cle(id);
 
@@ -49,17 +49,17 @@ int init_file_msg(int id, int qui) {
         flags = 0660;
     }
 
-    msgid = msgget(cle, flags);
-    if (msgid == -1) {
+    id_file = msgget(cle, flags);
+    if (id_file == -1) {
         perror("msgget");
         exit(EXIT_FAILURE);
     }
 
-    return msgid;
+    return id_file;
 }
 
-void supprimer_msgq(int msgid) {
-    if (msgctl(msgid, IPC_RMID, NULL) == -1) {
+void supprimer_file_msg(int id_file) {
+    if (msgctl(id_file, IPC_RMID, NULL) == -1) {
         perror("msgctl IPC_RMID");
         exit(EXIT_FAILURE);
     }

@@ -23,7 +23,7 @@ int init_smp(int taille, int qui, int quel){
 
 void *attacher_smp(int id){
     void *res;
-    if ((res = shmat(id, NULL, 0)) == -1) {
+    if ((res = shmat(id, NULL, 0)) == NULL) {
         perror("shmat");
         fprintf(stderr, "Impossible d'attacher le SMP.\n");
         exit(-1);

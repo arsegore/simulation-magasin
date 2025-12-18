@@ -1,17 +1,19 @@
 CC=gcc
 CFLAGS=-Iinc -Wall
 
-initial: bin cle.o sem.o smp.o logs.o
-	$(CC) $(CFLAGS) src/initial.c build/cle.o build/sem.o build/smp.o build/logs.o -o bin/initial
+all: initial client vendeur caissier
 
-client: bin cle.o sem.o smp.o logs.o
-	$(CC) $(CFLAGS) src/client.c build/cle.o build/sem.o build/smp.o build/logs.o -o bin/client
+initial: bin cle.o sem.o smp.o logs.o msg.o
+	$(CC) $(CFLAGS) src/initial.c build/cle.o build/sem.o build/smp.o build/logs.o build/msg.o -o bin/initial
 
-vendeur: bin cle.o sem.o smp.o logs.o
-	$(CC) $(CFLAGS) src/vendeur.c build/cle.o build/sem.o build/smp.o build/logs.o -o bin/vendeur
+client: bin cle.o sem.o smp.o logs.o msg.o
+	$(CC) $(CFLAGS) src/client.c build/cle.o build/sem.o build/smp.o build/logs.o build/msg.o -o bin/client
 
-caissier: bin cle.o sem.o smp.o logs.o
-	$(CC) $(CFLAGS) src/caissier.c build/cle.o build/sem.o build/smp.o build/logs.o -o bin/caissier
+vendeur: bin cle.o sem.o smp.o logs.o msg.o
+	$(CC) $(CFLAGS) src/vendeur.c build/cle.o build/sem.o build/smp.o build/logs.o build/msg.o -o bin/vendeur
+
+caissier: bin cle.o sem.o smp.o logs.o msg.o
+	$(CC) $(CFLAGS) src/caissier.c build/cle.o build/sem.o build/smp.o build/logs.o build/msg.o -o bin/caissier
 
 cle.o: build
 	$(CC) $(CFLAGS) src/cle/cle.c -o build/cle.o -c
@@ -24,6 +26,9 @@ smp.o: build
 
 logs.o: build
 	$(CC) $(CFLAGS) src/logs.c -o build/logs.o -c
+
+msg.o:
+	$(CC) $(CFLAGS) src/msg/msg.c -o build/msg.o -c
 
 bin:
 	mkdir -p bin

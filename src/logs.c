@@ -6,7 +6,8 @@
 FILE *logs = NULL;
 
 void init_log(){
-    if ((logs = fopen(FICHIER_LOGS, "w+") == NULL)){
+    logs = fopen(FICHIER_LOGS, "w+");
+    if (logs == NULL){
         perror("fopen");
         exit(EXIT_FAILURE);
     }
@@ -14,14 +15,16 @@ void init_log(){
 
 // Pour écrire à la fois dans le fichier de log et sur le terminal, on va 
 // Utiliser cette fonction qui fera deux print (sur stdout et dans le fichier)
-void log(const char *msg, ...){
+void printlog(const char *msg, ...){
     va_list args1, args2; // il faut une copie sinon seg fault jcrois
 
     va_start(args1, msg);
-    va_copy(args1, args2);
+    va_copy(args2, args1);
     vprintf(msg, args1);
-    vfprintf(logs, msg, args2);
-
+    if (logs != NULL){
+        vfprintf(logs, msg, args2);
+        fflush(logs);   // sinon pb avec plusieurs process qui écrivent en mm temps
+    }
     va_end(args1);
     va_end(args2);
 }

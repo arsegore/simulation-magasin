@@ -17,7 +17,7 @@
 
 // Bornes pour les tirages 
 #define TEMPS_MAX_ATTENTE   15000  // en nanosecondes
-#define TAUX_PROBA_VENTE    0.7
+#define TAUX_PROBA_VENTE    70
 #define PRIX_MIN            15
 #define PRIX_MAX            300
 

@@ -11,10 +11,10 @@
 // Quelques macros pour éviter de répéter le calcul...
 #define NUM_TO_MSG_VENDEUR(num) ((num) + MSG_VENDEUR)
 #define NUM_TO_MSG_CLIENT(num) ((num) + MSG_CLIENT)
-#define NUM_TO_MSG_CAISSIER(num) ((num) + MSG_CLIENT)
+#define NUM_TO_MSG_CAISSIER(num) ((num) + MSG_CAISSIER)
 #define MSG_TO_NUM_VENDEUR(num) ((num) - MSG_VENDEUR)
 #define MSG_TO_NUM_CLIENT(num) ((num) - MSG_CLIENT)
-#define MSG_TO_NUM_CAISSIER(num) ((num) - MSG_CLIENT)
+#define MSG_TO_NUM_CAISSIER(num) ((num) - MSG_CAISSIER)
 
 // L'opération à laquelle correspond un msg
 #define DEMANDER_NUM_RAYON  0
@@ -24,6 +24,7 @@
 #define ANNULER_VENTE       4
 #define ENVOYER_NUMERO      5
 #define ANNONCER_PRIX       6
+#define CONFIRMER_VENTE     7
 
 // Une seule structure générique pour tous les messages
 typedef struct {

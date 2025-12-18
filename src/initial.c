@@ -5,6 +5,8 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
 #include "config.h"
 #include "msg.h"
 #include "sem.h"
@@ -25,9 +27,11 @@ int id_sem_dispo_caissiers;
 int id_sem_vente;
 int id_sem_paiement;
 int id_file_msg;
-sigset_t att_sigint;
+sigset_t att_sigint, tout_bloquer;
 
 void nettoyer(){
+    usleep(10000);
+    printlog("[Initial] Nettoyage...\n");
     detacher_smp(adr_smp_taux_occupation_vendeurs);
     detacher_smp(adr_smp_grimoire);
     detacher_smp(adr_smp_transactions);
@@ -41,19 +45,25 @@ void nettoyer(){
     supprimer_sem(id_sem_paiement);
     supprimer_file_msg(id_file_msg);
     fin_log();
+    exit(EXIT_SUCCESS);
+}
+
+void ne_rien_faire(){
 }
 
 void usage(){
-    printf("Usage: ./simulation <nb_clients> <nb_vendeurs> <nb_caissiers>\n");
+    printf("Usage: ./initial <nb_vendeurs> <nb_caissiers> <nb_clients>\n");
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]){
     int i;
+    int encore;
     int nb_vendeurs, nb_caissiers, nb_clients;
     pid_t pid;
     pid_t pid_clients[NB_CLIENTS_MAX];
-    char *args_fils;    // pour passer des arguments au exec
+    char *args_fils[5];                 // pour passer des arguments au exec
+    char arg1[64], arg2[64], arg3[64];  // buffer dans lesquels on écrira les variables à passer aux fils
 
     if (argc < 4) {
         usage();
@@ -62,11 +72,17 @@ int main(int argc, char *argv[]){
     atexit(nettoyer);   // vu qu'on exit dans tous les cas (erreur ou normal), ça permet d'assurer le nettoyage dans ttes les situations
 
     init_log();
-    log("[Initial] Démarrage...\n");
+    printlog("[Initial] Démarrage...\n");
 
     // 0. Gestion des signaux
     sigfillset(&att_sigint);
     sigdelset(&att_sigint, SIGINT);
+    signal(SIGSEGV, nettoyer); // pour nettoyer derriere une segfault, pcq là ça commence à faire beaucoup
+    signal(SIGUSR1, ne_rien_faire);
+    signal(SIGINT, ne_rien_faire);
+    signal(SIGTERM, nettoyer);
+    sigfillset(&tout_bloquer);
+    sigprocmask(SIG_SETMASK, &tout_bloquer, NULL); // pour que les fils naissent avec tous les signaux bloqués
 
     // 1. Récupération des arguments
     nb_vendeurs = atoi(argv[1]);
@@ -79,8 +95,8 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
 
-    log("[Initial] Paramètres : %s clients, %s vendeurs, %s caissiers\n", nb_clients, nb_vendeurs, nb_caissiers);
-
+    printlog("[Initial] Paramètres : %d clients, %d vendeurs, %d caissiers\n", nb_clients, nb_vendeurs, nb_caissiers);
+    
     // 2. Création des IPC nécessaires
     // 2.1.1 SMP représentant l'occupation de chaque vendeur (lgr de sa file)
     //     Les clients lisent dedans, les vendeurs y écrivent lorsque leur file
@@ -118,23 +134,29 @@ int main(int argc, char *argv[]){
     id_sem_dispo_caissiers = init_sem(ID_SEM_CAISSIERS, nb_caissiers, PERE, 0);
 
     // 2.6 Ensemble de sémaphores pour synchroniser les ventes 
-    id_sem_vente = init_sem(ID_SEM_VENTE, nb_vendeurs, PERE, 1);
+    id_sem_vente = init_sem(ID_SEM_VENTE, nb_vendeurs, PERE, 0);
 
     // 2.7 Ensemble de sémaphores pour les paiments 
-    id_sem_paiement = init_sem(ID_SEM_PAIEMENT, nb_caissiers, PERE, 1);
+    id_sem_paiement = init_sem(ID_SEM_PAIEMENT, nb_caissiers, PERE, 0);
 
 
     /**
      * Lancement des processus 
      */
 
+    args_fils[1] = arg1;
+    args_fils[2] = arg2;
+    args_fils[3] = arg3;
+    args_fils[4] = NULL;
+    
     // Vendeurs
-    log("[Initial] Création des vendeurs...\n");
+    printlog("[Initial] Création des vendeurs...\n");
+    args_fils[0] = EXE_VENDEUR;
     for (i = 0; i < nb_vendeurs; i++){
         args_fils[0] = EXE_VENDEUR;
-        sprintf(args_fils[1], i);
-        sprintf(args_fils[2], nb_vendeurs);
-        sprintf(args_fils[3], nb_caissiers);
+        sprintf(arg1,"%d", i);
+        sprintf(arg2,"%d", nb_vendeurs);
+        sprintf(arg3,"%d", nb_caissiers);
         switch(fork()) {
             case 0: 
                 if (execve(EXE_VENDEUR, args_fils, NULL) == -1){
@@ -149,12 +171,12 @@ int main(int argc, char *argv[]){
     }
 
     // Caissiers
-    log("[Initial] Création des caissiers...\n");
+    printlog("[Initial] Création des caissiers...\n");
     for (i = 0; i < nb_caissiers; i++){
             args_fils[0] = EXE_CAISSIER;
-            sprintf(args_fils[1], i);
-            sprintf(args_fils[2], nb_vendeurs);
-            sprintf(args_fils[3], nb_caissiers);
+            sprintf(arg1,"%d", i);
+            sprintf(arg2,"%d", nb_vendeurs);
+            sprintf(arg3,"%d", nb_caissiers);
         switch(fork()) {
             case 0: 
                 if (execve(EXE_CAISSIER, args_fils, NULL) == -1){
@@ -169,12 +191,12 @@ int main(int argc, char *argv[]){
     }
 
     // Clients
-    log("[Initial] Création des clients...\n");
+    printlog("[Initial] Création des clients...\n");
     for (i = 0; i < nb_clients; i++){
         args_fils[0] = EXE_CLIENT;
-        sprintf(args_fils[1], i);
-        sprintf(args_fils[2], nb_vendeurs);
-        sprintf(args_fils[3], nb_caissiers);
+        sprintf(arg1,"%d", i);
+        sprintf(arg2,"%d", nb_vendeurs);
+        sprintf(arg3,"%d", nb_caissiers);
         switch(pid = fork()) {
             case 0: 
                 if (execve(EXE_CLIENT, args_fils, NULL) == -1){
@@ -190,23 +212,34 @@ int main(int argc, char *argv[]){
         }
     }
 
+    usleep(2000); // légère attente que tous les fils soient prets
+
     // Envoi de SIGUSR1 à tous les processus pour démarrer la simulation
-    log("[Initial] La simulation commence, envoi de SIGUSR1\n");
+    printlog("[Initial] La simulation commence, envoi de SIGUSR1\n");
     kill(0, SIGUSR1); // envoie à tous les processus du grp donc pas besoin des pid
 
     // Attente de terminaison des clients (et seulement des clients)
-    log("[Initial] Attente de terminaison des clients...\n");
+    printlog("[Initial] Attente de terminaison des clients...\n");
     for (i = 0; i < nb_clients; i++){
-        waitpid(pid_clients[i], NULL, 0);
-    }
+        encore = 1;
+        while (encore)
+            if ((waitpid(pid_clients[i],NULL,0)==-1) && (errno == ECHILD))
+                encore = 0;
+        }
 
     // Attente d'un signal depuis le terminal ==> SIGINT
-    log("[Initial] En attente d'un signal depuis le terminal...\n");
+    printlog("[Initial] En attente d'un signal depuis le terminal...\n");
     sigsuspend(&att_sigint);
 
     // Envoie SIGUSR2 aux reste des fils (donc les vendeurs et caissiers)
-    log("[Initial] Envoi de SIGUSR2 aux vendeurs et caissiers\n");
+    printlog("[Initial] Envoi de SIGUSR2 aux vendeurs et caissiers\n");
     kill(0, SIGUSR2);
+
+    // Attente du reste des fils (vendeurs et caissiers)
+    encore = 1;
+    while (encore)
+        if ((waitpid(-1,NULL,0)==-1) && (errno == ECHILD))
+            encore = 0;
 
     exit(EXIT_SUCCESS);
 }

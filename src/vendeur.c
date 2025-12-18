@@ -1,6 +1,7 @@
 /**
  * Processus vendeur
  */
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
@@ -28,14 +29,14 @@ message msg;
 sigset_t tout_bloquer, att_sigusr1, att_sigusr2;
 
 void handler_sigusr2(){
-    recommencer = 0;
+    exit(EXIT_SUCCESS);
 }
 
 void handler_sigusr1(){
 }
 
 void nettoyer(){
-    log("[Vendeur %d] Nettoyage...\n", numero_vendeur);
+    printlog("[Vendeur %d] Nettoyage...\n", numero_vendeur);
     detacher_smp(adr_smp_taux_occupation_vendeurs);
     detacher_smp(adr_smp_grimoire);
     detacher_smp(adr_smp_transactions);
@@ -48,11 +49,13 @@ int chercher_vendeur_specialise(int num_rayon, int *grimoire){
     int i;
 
     depart = rand() % NB_VENDEURS_MAX;
-    for (i = depart; i < NB_VENDEURS_MAX; i++){
-        if (grimoire[depart + i % NB_VENDEURS_MAX] == num_rayon) {
-            return grimoire[depart + i % NB_VENDEURS_MAX];
+    for (i = 0; i < NB_VENDEURS_MAX; i++){
+        if (grimoire[(depart + i) % NB_VENDEURS_MAX] == num_rayon) {
+            return (depart + i) % NB_VENDEURS_MAX;
         }
     }
+
+    return -1;
 }
 
 int determiner_prix(){
@@ -61,27 +64,25 @@ int determiner_prix(){
 
 int main(int argc, char *argv[]){
     int numero_client;
-    int rayon_interet;
-    int numero_caissier;
-    int nb_vendeurs, nb_caissiers;
+    int nb_vendeurs;
     int num_rayon_client;
     int num_rayon_vendeur;
     int num_redirection;
     int attente;
     int prix;
 
-    if (argc > 0) {
-        numero_vendeur = atoi(argv[1]);
-        nb_vendeurs = atoi(argv[2]);
-        nb_caissiers = atoi(argv[3]);
+    numero_vendeur = atoi(argv[1]);
+    nb_vendeurs = atoi(argv[2]);
+    // nb_caissiers = atoi(argv[3]);
     
-    }
-    srand(time(NULL));
+    srand(time(NULL) * getpid());
 
     atexit(nettoyer);   // vu qu'on exit dans tous les cas (erreur ou normal), ça permet d'assurer le nettoyage dans ttes les situations
+    init_log();
 
     // 0. Gestion des signaux
     sigfillset(&tout_bloquer);
+    sigdelset(&tout_bloquer, SIGUSR2);
     sigprocmask(SIG_SETMASK, &tout_bloquer, NULL); // On bloque TOUS les signaux
     sigfillset(&att_sigusr1);
     sigdelset(&att_sigusr1, SIGUSR1);
@@ -92,8 +93,10 @@ int main(int argc, char *argv[]){
 
     // 1. Récupération des IPC    
     id_file_msg = init_file_msg(ID_FILE_MSG, FILS);
-    id_sem_vente = init_sem(ID_SEM_VENTE, nb_vendeurs, FILS, 1);
+    id_sem_vente = init_sem(ID_SEM_VENTE, nb_vendeurs, FILS, 0);
     id_sem_dispo_vendeurs = init_sem(ID_SEM_VENDEURS, nb_vendeurs, FILS, 0);
+    id_smp_grimoire = init_smp(TAILLE_TAB_VENDEUR, FILS, ID_SMP_GRIMOIRE);
+    adr_smp_grimoire = attacher_smp(id_smp_grimoire);
     id_smp_transactions = init_smp(TAILLE_TAB_CLIENT, FILS, ID_SMP_TRANSACTIONS);
     adr_smp_transactions = (int *) attacher_smp(id_smp_transactions);
     
@@ -105,14 +108,14 @@ int main(int argc, char *argv[]){
     }
     adr_smp_grimoire[numero_vendeur] = num_rayon_vendeur;
 
-    log("[Vendeur %d] Création...\n", numero_vendeur);
+    printlog("[Vendeur %d] Création...\n", numero_vendeur);
 
     /**********************
      * ATTENTE DU DEMARRAGE
      **********************/
     sigsuspend(&att_sigusr1);
 
-    log("[Vendeur %d] Démarrage. Je suis spécialisé dans le rayon %d\n", numero_vendeur, num_rayon_vendeur);
+    printlog("[Vendeur %d] Démarrage. Je suis spécialisé dans le rayon %d\n", numero_vendeur, num_rayon_vendeur);
 
     while (recommencer) {
         // 2. Le vendeur est prêt à accueillir un client
@@ -125,7 +128,7 @@ int main(int argc, char *argv[]){
         numero_client = MSG_TO_NUM_CLIENT(msg.qui_envoie);
         num_rayon_client = msg.valeur;
 
-        log("[Vendeur %d] Le client %d est là, il me dit qu'il est intéressé par le rayon %d\n", numero_vendeur, numero_client, num_rayon_client);
+        printlog("[Vendeur %d] Le client %d est là, il me dit qu'il est intéressé par le rayon %d\n", numero_vendeur, numero_client, num_rayon_client);
 
         // Si c'est pas bon, redirige le client
         if (num_rayon_client != num_rayon_vendeur) {
@@ -136,33 +139,39 @@ int main(int argc, char *argv[]){
                         REDIRECTION,
                         num_redirection
                         );
-            log("[Vendeur %d] Je redirige le client %d vers le vendeur %d, spécialiste du rayon %d\n", numero_vendeur, numero_client, num_rayon_client);
+            printlog("[Vendeur %d] Je redirige le client %d vers le vendeur %d, spécialiste du rayon %d\n", numero_vendeur, numero_client, num_redirection, num_rayon_client);
             continue;
         } else { // Début de la vente
+            envoyer_msg(id_file_msg,
+                        NUM_TO_MSG_CLIENT(numero_client),
+                        NUM_TO_MSG_VENDEUR(numero_vendeur),
+                        VALIDER_RAYON,
+                        0
+                        );
             attente = rand() % TEMPS_MAX_ATTENTE;
-            log("[Vendeur %d] La vente commence, elle va durer %d ns\n", numero_vendeur, attente);
+            printlog("[Vendeur %d] La vente commence, elle va durer %d ns\n", numero_vendeur, attente);
             usleep(attente); // Attente aléatoire
             
             // Fin de la vente
             V(id_sem_vente, numero_vendeur, 1);
-            log("[Vendeur %d] La vente s'est terminée\n", numero_vendeur);
+            printlog("[Vendeur %d] La vente s'est terminée\n", numero_vendeur);
             
         }
 
         // 5. Attente de la décision du client
         msg = recevoir_msg(id_file_msg, NUM_TO_MSG_VENDEUR(numero_vendeur));
         if (msg.info == ANNULER_VENTE) {
-            log("[Vendeur %d] Le client %d a annulé la vente.\n", numero_vendeur);
+            printlog("[Vendeur %d] Le client %d a annulé la vente.\n", numero_vendeur, numero_client);
             continue;
-        } else {
+        } else if (msg.info == CONFIRMER_VENTE) {
             // La vente se fait, le montant de la transaction est renseigné dans le SMP
             prix = determiner_prix();
             adr_smp_transactions[numero_client] = prix;
-            log("[Vendeur %d] Le client %d a confirmé la vente, pour un montant de %d", numero_vendeur, numero_client, prix);
+            printlog("[Vendeur %d] Le client %d a confirmé la vente, pour un montant de %d\n", numero_vendeur, numero_client, prix);
         }
 
         // Et au suivant !
-        log("[Vendeur %d] Au suivant !\n", numero_vendeur);
+        printlog("[Vendeur %d] Au suivant !\n", numero_vendeur);
     }
 
     exit(EXIT_SUCCESS);

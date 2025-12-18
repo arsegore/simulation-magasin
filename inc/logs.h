@@ -3,7 +3,7 @@
 
 void init_log();
 
-void log(char *msg, ...);
+void printlog(char *msg, ...);
 
 void fin_log();
 

@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Iinc -Wall
 
-all: initial client vendeur caissier
+all: initial client vendeur caissier monitoring
 
 initial: bin cle.o sem.o smp.o logs.o msg.o
 	$(CC) $(CFLAGS) src/initial.c build/cle.o build/sem.o build/smp.o build/logs.o build/msg.o -o bin/initial
@@ -14,6 +14,9 @@ vendeur: bin cle.o sem.o smp.o logs.o msg.o
 
 caissier: bin cle.o sem.o smp.o logs.o msg.o
 	$(CC) $(CFLAGS) src/caissier.c build/cle.o build/sem.o build/smp.o build/logs.o build/msg.o -o bin/caissier
+
+monitoring: bin cle.o sem.o smp.o logs.o msg.o
+	$(CC) $(CFLAGS) src/monitoring.c build/cle.o build/sem.o build/smp.o build/logs.o build/msg.o -o bin/monitoring
 
 cle.o: build
 	$(CC) $(CFLAGS) src/cle/cle.c -o build/cle.o -c

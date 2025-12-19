@@ -8,12 +8,13 @@
 #include "cle.h"
 #include "msg.h"
 
-void envoyer_msg(int id_file, int destinataire, int num_exp, int info, int valeur){
+void envoyer_msg(int id_file, int numero_destinataire, int qui, int quoi, int numero_expediteur, int valeur){
     message msg;
+    int type;
 
-    msg.mtype = destinataire;
-    msg.qui_envoie = num_exp;
-    msg.info = info;
+    type = numero_destinataire + qui + quoi;
+    msg.mtype = type;
+    msg.qui_envoie = numero_expediteur;
     msg.valeur = valeur;
 
     if (msgsnd(id_file, &msg, sizeof(message) - sizeof(long), 0) == -1) {
@@ -22,10 +23,12 @@ void envoyer_msg(int id_file, int destinataire, int num_exp, int info, int valeu
     }
 }
 
-message recevoir_msg(int id_file, int destinataire) {
+message recevoir_msg(int id_file, int numero_destinataire, int qui, int quoi) {
     message msg;
+    int type;
+    type = numero_destinataire + qui + quoi;
 
-    if (msgrcv(id_file, &msg, sizeof(message) - sizeof(long), destinataire, 0) == -1) {
+    if (msgrcv(id_file, &msg, sizeof(message) - sizeof(long), type, 0) == -1) {
         perror("msgrcv");
         exit(EXIT_FAILURE);
     }

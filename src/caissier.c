@@ -13,11 +13,6 @@
 #include "logs.h"
 
 int numero_caissier;
-int id_smp_taux_occupation_vendeurs;
-int *adr_smp_taux_occupation_vendeurs;
-int id_mutex_taux_occupation_vendeurs;
-int id_smp_grimoire;
-int *adr_smp_grimoire;
 int id_sem_dispo_vendeurs;
 int id_sem_dispo_caissiers;
 int id_file_msg;
@@ -29,6 +24,7 @@ message msg;
 sigset_t tout_bloquer, att_sigusr1, att_sigusr2;
 
 void handler_sigusr2(){
+    printlog("[Caissier %d] SIGUSR2 reçu\n", numero_caissier);
     exit(EXIT_SUCCESS);
 }
 
@@ -37,9 +33,9 @@ void handler_sigusr1(){
 
 void nettoyer(){
     printlog("[Caissier %d] Nettoyage...\n", numero_caissier);
-    detacher_smp(adr_smp_taux_occupation_vendeurs);
-    detacher_smp(adr_smp_grimoire);
-    detacher_smp(adr_smp_transactions);
+    if (adr_smp_transactions != NULL) {
+        detacher_smp(adr_smp_transactions);
+    }
 }
 
 int determiner_prix(){
@@ -91,8 +87,8 @@ int main(int argc, char *argv[]){
         // 2. Le caissier est prêt à accueillir un client
         V(id_sem_dispo_caissiers, numero_caissier, 1);
 
-        msg = recevoir_msg(id_file_msg, NUM_TO_MSG_CAISSIER(numero_caissier));
-        numero_client = MSG_TO_NUM_CLIENT(msg.qui_envoie);
+        msg = recevoir_msg(id_file_msg, numero_caissier, MSG_CAISSIER, ENTREE_CAISSE);
+        numero_client = msg.valeur;
         // vérifier qu'il s'agit du bon type de msg ?
 
         printlog("[Caissier %d] Le client %d est arrivé à ma caisse.\n", numero_caissier, numero_client);
@@ -104,16 +100,11 @@ int main(int argc, char *argv[]){
         printlog("[Caissier %d] J'ai trouvé une transaction d'un montant de %d pour le client %d\n", numero_caissier, montant, numero_client);
 
         // 4. On communqiue le prix au client
-        envoyer_msg(id_file_msg,
-                    NUM_TO_MSG_CLIENT(numero_client),
-                    NUM_TO_MSG_CAISSIER(numero_caissier),
-                    ANNONCER_PRIX,
-                    montant
-                    );
+        envoyer_msg(id_file_msg, numero_client, MSG_CLIENT, PAIEMENT, numero_caissier, montant);
 
         // 5. Paiement
+        attente = rand() % DUREE_MAX_PAIEMENT;
         printlog("[Caissier %d] Début du paiement, qui va durer %d ns\n", numero_caissier, attente);
-        attente = rand() % TEMPS_MAX_ATTENTE;
         usleep(attente); // Attente aléatoire
             
         // Fin du paiement

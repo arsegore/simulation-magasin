@@ -13,9 +13,6 @@
 #include "logs.h"
 
 int numero_vendeur;
-int id_smp_taux_occupation_vendeurs;
-int *adr_smp_taux_occupation_vendeurs;
-int id_mutex_taux_occupation_vendeurs;
 int id_smp_grimoire;
 int *adr_smp_grimoire;
 int id_sem_dispo_vendeurs;
@@ -29,6 +26,7 @@ message msg;
 sigset_t tout_bloquer, att_sigusr1, att_sigusr2;
 
 void handler_sigusr2(){
+    printlog("[Vendeur %d] SIGUSR2 reçu\n", numero_vendeur);
     exit(EXIT_SUCCESS);
 }
 
@@ -37,9 +35,12 @@ void handler_sigusr1(){
 
 void nettoyer(){
     printlog("[Vendeur %d] Nettoyage...\n", numero_vendeur);
-    detacher_smp(adr_smp_taux_occupation_vendeurs);
-    detacher_smp(adr_smp_grimoire);
-    detacher_smp(adr_smp_transactions);
+    if (adr_smp_grimoire != NULL) {
+        detacher_smp(adr_smp_grimoire);
+    }
+    if (adr_smp_transactions != NULL) {
+        detacher_smp(adr_smp_transactions);
+    }
 }
 
 // parcours du grimoire à partir d'un point aléatoire
@@ -96,7 +97,7 @@ int main(int argc, char *argv[]){
     id_sem_vente = init_sem(ID_SEM_VENTE, nb_vendeurs, FILS, 0);
     id_sem_dispo_vendeurs = init_sem(ID_SEM_VENDEURS, nb_vendeurs, FILS, 0);
     id_smp_grimoire = init_smp(TAILLE_TAB_VENDEUR, FILS, ID_SMP_GRIMOIRE);
-    adr_smp_grimoire = attacher_smp(id_smp_grimoire);
+    adr_smp_grimoire = (int *) attacher_smp(id_smp_grimoire);
     id_smp_transactions = init_smp(TAILLE_TAB_CLIENT, FILS, ID_SMP_TRANSACTIONS);
     adr_smp_transactions = (int *) attacher_smp(id_smp_transactions);
     
@@ -115,59 +116,51 @@ int main(int argc, char *argv[]){
      **********************/
     sigsuspend(&att_sigusr1);
 
-    printlog("[Vendeur %d] Démarrage. Je suis spécialisé dans le rayon %d\n", numero_vendeur, num_rayon_vendeur);
+    printlog("[Vendeur %d] Démarrage. Je suis spécialisé dans le rayon %s\n", numero_vendeur, nom_rayon(num_rayon_vendeur));
 
     while (recommencer) {
         // 2. Le vendeur est prêt à accueillir un client
         V(id_sem_dispo_vendeurs, numero_vendeur, 1);
 
-        msg = recevoir_msg(id_file_msg, NUM_TO_MSG_VENDEUR(numero_vendeur));
+        msg = recevoir_msg(id_file_msg, numero_vendeur, MSG_VENDEUR, ACCUEIL);
         
         // vérifier qu'il s'agit du bon type de msg ?
         // 3. Le client demande le rayon, on lui répond
-        numero_client = MSG_TO_NUM_CLIENT(msg.qui_envoie);
+        numero_client = msg.qui_envoie;
         num_rayon_client = msg.valeur;
 
-        printlog("[Vendeur %d] Le client %d est là, il me dit qu'il est intéressé par le rayon %d\n", numero_vendeur, numero_client, num_rayon_client);
+        printlog("[Vendeur %d] Le client %d est là, il me dit qu'il est intéressé par le rayon %s\n", numero_vendeur, numero_client, nom_rayon(num_rayon_client));
 
         // Si c'est pas bon, redirige le client
         if (num_rayon_client != num_rayon_vendeur) {
             num_redirection = chercher_vendeur_specialise(num_rayon_client, adr_smp_grimoire);
-            envoyer_msg(id_file_msg,
-                        NUM_TO_MSG_CLIENT(numero_client),
-                        NUM_TO_MSG_VENDEUR(numero_vendeur),
-                        REDIRECTION,
-                        num_redirection
-                        );
-            printlog("[Vendeur %d] Je redirige le client %d vers le vendeur %d, spécialiste du rayon %d\n", numero_vendeur, numero_client, num_redirection, num_rayon_client);
+            envoyer_msg(id_file_msg, numero_client, MSG_CLIENT, REPONSE, numero_vendeur, num_redirection);
+            printlog("[Vendeur %d] Je redirige le client %d vers le vendeur %d, spécialiste du rayon %s\n", numero_vendeur, numero_client, num_redirection, nom_rayon(num_rayon_client));
             continue;
-        } else { // Début de la vente
-            envoyer_msg(id_file_msg,
-                        NUM_TO_MSG_CLIENT(numero_client),
-                        NUM_TO_MSG_VENDEUR(numero_vendeur),
-                        VALIDER_RAYON,
-                        0
-                        );
-            attente = rand() % TEMPS_MAX_ATTENTE;
+        } else { 
+            envoyer_msg(id_file_msg, numero_client, MSG_CLIENT, REPONSE, numero_vendeur, VALIDER_RAYON);
+            
+            // Début de la vente
+            attente = rand() % DUREE_MAX_VENTE;
             printlog("[Vendeur %d] La vente commence, elle va durer %d ns\n", numero_vendeur, attente);
             usleep(attente); // Attente aléatoire
-            
             // Fin de la vente
             V(id_sem_vente, numero_vendeur, 1);
-            printlog("[Vendeur %d] La vente s'est terminée\n", numero_vendeur);
-            
-        }
 
-        // 5. Attente de la décision du client
-        msg = recevoir_msg(id_file_msg, NUM_TO_MSG_VENDEUR(numero_vendeur));
-        if (msg.info == ANNULER_VENTE) {
-            printlog("[Vendeur %d] Le client %d a annulé la vente.\n", numero_vendeur, numero_client);
-            continue;
-        } else if (msg.info == CONFIRMER_VENTE) {
-            // La vente se fait, le montant de la transaction est renseigné dans le SMP
-            prix = determiner_prix();
-            adr_smp_transactions[numero_client] = prix;
-            printlog("[Vendeur %d] Le client %d a confirmé la vente, pour un montant de %d\n", numero_vendeur, numero_client, prix);
+            // 5. Attente de la décision du client
+            msg = recevoir_msg(id_file_msg, numero_vendeur, MSG_VENDEUR, CHOIX_CLIENT);
+            if (msg.valeur == CLIENT_ANNULE_VENTE) {
+                printlog("[Vendeur %d] Le client %d a annulé la vente.\n", numero_vendeur, numero_client);
+                continue;
+            } else if (msg.valeur == CLIENT_CONFIRME_VENTE) {
+                // La vente se fait, le montant de la transaction est renseigné dans le SMP
+                prix = determiner_prix();
+                adr_smp_transactions[numero_client] = prix;
+                printlog("[Vendeur %d] Le client %d a confirmé la vente, pour un montant de %d\n", numero_vendeur, numero_client, prix);
+            }
+
+            envoyer_msg(id_file_msg, numero_client, MSG_CLIENT, FIN_VENTE, numero_vendeur, 0);
+            printlog("[Vendeur %d] La vente s'est terminée\n", numero_vendeur);
         }
 
         // Et au suivant !

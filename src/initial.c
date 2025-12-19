@@ -32,9 +32,15 @@ sigset_t att_sigint, tout_bloquer;
 void nettoyer(){
     usleep(10000);
     printlog("[Initial] Nettoyage...\n");
-    detacher_smp(adr_smp_taux_occupation_vendeurs);
-    detacher_smp(adr_smp_grimoire);
-    detacher_smp(adr_smp_transactions);
+    if (adr_smp_taux_occupation_vendeurs != NULL){
+        detacher_smp(adr_smp_taux_occupation_vendeurs);
+    }
+    if (adr_smp_grimoire != NULL) {
+        detacher_smp(adr_smp_grimoire);
+    }
+    if (adr_smp_transactions != NULL) {
+        detacher_smp(adr_smp_transactions);
+    }
     supprimer_smp(id_smp_taux_occupation_vendeurs);
     supprimer_smp(id_smp_grimoire);
     supprimer_smp(id_smp_transactions);
@@ -77,10 +83,8 @@ int main(int argc, char *argv[]){
     // 0. Gestion des signaux
     sigfillset(&att_sigint);
     sigdelset(&att_sigint, SIGINT);
-    signal(SIGSEGV, nettoyer); // pour nettoyer derriere une segfault, pcq là ça commence à faire beaucoup
     signal(SIGUSR1, ne_rien_faire);
     signal(SIGINT, ne_rien_faire);
-    signal(SIGTERM, nettoyer);
     sigfillset(&tout_bloquer);
     sigprocmask(SIG_SETMASK, &tout_bloquer, NULL); // pour que les fils naissent avec tous les signaux bloqués
 
@@ -212,7 +216,7 @@ int main(int argc, char *argv[]){
         }
     }
 
-    usleep(2000); // légère attente que tous les fils soient prets
+    usleep(100000); // légère attente que tous les fils soient prets
 
     // Envoi de SIGUSR1 à tous les processus pour démarrer la simulation
     printlog("[Initial] La simulation commence, envoi de SIGUSR1\n");
@@ -222,6 +226,7 @@ int main(int argc, char *argv[]){
     printlog("[Initial] Attente de terminaison des clients...\n");
     for (i = 0; i < nb_clients; i++){
         encore = 1;
+        printlog("[Initial] Attente de terminaison du client %d\n", i);
         while (encore)
             if ((waitpid(pid_clients[i],NULL,0)==-1) && (errno == ECHILD))
                 encore = 0;
@@ -236,6 +241,7 @@ int main(int argc, char *argv[]){
     kill(0, SIGUSR2);
 
     // Attente du reste des fils (vendeurs et caissiers)
+    printlog("[Initial] Attente de terminaison des vendeurs et caissiers pour nettoyer\n");
     encore = 1;
     while (encore)
         if ((waitpid(-1,NULL,0)==-1) && (errno == ECHILD))

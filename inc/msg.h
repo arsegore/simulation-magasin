@@ -8,35 +8,30 @@
 #define MSG_CAISSIER    2000
 #define MSG_CLIENT      3000
 
-// Quelques macros pour éviter de répéter le calcul...
-#define NUM_TO_MSG_VENDEUR(num) ((num) + MSG_VENDEUR)
-#define NUM_TO_MSG_CLIENT(num) ((num) + MSG_CLIENT)
-#define NUM_TO_MSG_CAISSIER(num) ((num) + MSG_CAISSIER)
-#define MSG_TO_NUM_VENDEUR(num) ((num) - MSG_VENDEUR)
-#define MSG_TO_NUM_CLIENT(num) ((num) - MSG_CLIENT)
-#define MSG_TO_NUM_CAISSIER(num) ((num) - MSG_CAISSIER)
+// Le type d'opération du message
+#define ACCUEIL                  10000
+#define REPONSE                  20000
+#define CHOIX_CLIENT             30000
+#define FIN_VENTE                40000
+#define ENTREE_CAISSE            50000
+#define PAIEMENT                 60000
 
-// L'opération à laquelle correspond un msg
-#define DEMANDER_NUM_RAYON  0
-#define VALIDER_RAYON       1
-#define REDIRECTION         2
-#define VALIDER_VENTE       3
-#define ANNULER_VENTE       4
-#define ENVOYER_NUMERO      5
-#define ANNONCER_PRIX       6
-#define CONFIRMER_VENTE     7
+// Valeur de l'opération (soit une des macros, soit un numéro de vendeur, soit un prix)
+#define CLIENT_CONFIRME_VENTE    1
+#define CLIENT_ANNULE_VENTE      0
+#define VALIDER_RAYON            -1
+
 
 // Une seule structure générique pour tous les messages
 typedef struct {
     long    mtype;          // Num. destinataire + MSG_X
     int     qui_envoie;
-    int     info;
     int     valeur;
 } message;
 
-void envoyer_msg(int id_file, int destinataire, int num_exp, int info, int valeur);
+void envoyer_msg(int id_file, int numero_destinataire, int qui, int quoi, int numero_expediteur, int valeur);
 
-message recevoir_msg(int id_file, int destinataire);
+message recevoir_msg(int id_file, int numero_destinataire, int qui, int quoi);
 
 int init_file_msg(int id, int qui);
 

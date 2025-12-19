@@ -39,8 +39,8 @@ void handler_sigusr1(){
  */
 int chercher_vendeur_le_moins_occupe(int *adr_smp_taux, int nb_vendeurs){
     int i;
-    int min = 9999999;
-    int id_min = -1;
+    int min = adr_smp_taux[0];
+    int id_min = 0;
     for (i = 0; i < nb_vendeurs; i++){
         if (adr_smp_taux[i] < min) {
             min = adr_smp_taux[i];
@@ -79,11 +79,11 @@ int main(int argc, char *argv[]){
     //      (un simple tableau avec la taille des files d'attente)
     id_smp_taux_occupation_vendeurs = init_smp(TAILLE_TAB_VENDEUR, FILS, ID_SMP_OCCUPATION_VENDEURS);
     adr_smp_taux_occupation_vendeurs = (int *) attacher_smp(id_smp_taux_occupation_vendeurs);
-    id_mutex_taux_occupation_vendeurs = init_sem(ID_SEM_MUTEX_OCCUP_V, 0, FILS, 1);
+    id_mutex_taux_occupation_vendeurs = init_sem(ID_SEM_MUTEX_OCCUP_V, 1, FILS, 1);
     
     // 1.2  Les sémaphores pour représenter la file d'attente des vendeurs/caissiers
-    id_sem_dispo_vendeurs = init_sem(ID_SEM_VENDEURS, 1, FILS, 0);
-    id_sem_dispo_caissiers = init_sem(ID_SEM_CAISSIERS, 1, FILS, 0);
+    id_sem_dispo_vendeurs = init_sem(ID_SEM_VENDEURS, nb_vendeurs, FILS, 0);
+    id_sem_dispo_caissiers = init_sem(ID_SEM_CAISSIERS, nb_caissiers, FILS, 0);
     
     // 1.3  La file de message 
     id_file_msg = init_file_msg(ID_FILE_MSG, FILS);
@@ -103,7 +103,7 @@ int main(int argc, char *argv[]){
     srand(time(NULL) * getpid());
     rayon_interet = rand() % NB_RAYONS; // numéro de rayon entre 0 et NB_RAYONS - 1
 
-    printlog("[Client %d] Démarrage. Je suis intéréssé par le rayon %d\n", numero_client, rayon_interet);
+    printlog("[Client %d] Démarrage. Je suis intéréssé par le rayon %s\n", numero_client, nom_rayon(rayon_interet));
     
     // 3. Cherche le vendeur le moins occupé
     numero_vendeur = chercher_vendeur_le_moins_occupe(adr_smp_taux_occupation_vendeurs, nb_vendeurs);
@@ -122,29 +122,29 @@ int main(int argc, char *argv[]){
         P(id_sem_dispo_vendeurs, numero_vendeur, 1);
 
         // 5. Communique au vendeur le rayon qui l'interesse 
-        envoyer_msg(id_file_msg, 
-                    NUM_TO_MSG_VENDEUR(numero_vendeur), 
-                    NUM_TO_MSG_CLIENT(numero_client), 
-                    DEMANDER_NUM_RAYON, 
-                    rayon_interet);
-        printlog("[Client %d] Je dis au vendeur %d que je suis intéressé par le rayon %d\n", numero_client, numero_vendeur, rayon_interet);
+        envoyer_msg(id_file_msg, numero_vendeur, MSG_VENDEUR, ACCUEIL, numero_client, rayon_interet);
+        printlog("[Client %d] Je dis au vendeur %d que je suis intéressé par le rayon %s\n", numero_client, numero_vendeur, nom_rayon(rayon_interet));
         
         // 6. Attente de réponse du vendeur
-        msg = recevoir_msg(id_file_msg, NUM_TO_MSG_CLIENT(numero_client));
+        msg = recevoir_msg(id_file_msg, numero_client, MSG_CLIENT, REPONSE);
     
         // Peu importe la réponse, le client va quitter la file
         P(id_mutex_taux_occupation_vendeurs, 0, 1);
         adr_smp_taux_occupation_vendeurs[numero_vendeur]--;
         V(id_mutex_taux_occupation_vendeurs, 0, 1);
 
-        if (msg.info == VALIDER_RAYON) {
+        if (msg.valeur == VALIDER_RAYON) {
             recommencer = 0;
-            printlog("[Client %d] Le vendeur %d est intéressé par le même rayon (%d) ! La vente commence\n", numero_client, numero_vendeur, rayon_interet);
+            printlog("[Client %d] Le vendeur %d est intéressé par le même rayon (%s) ! La vente commence\n", numero_client, numero_vendeur, nom_rayon(rayon_interet));
         } else {
             recommencer = 1;
             printlog("[Client %d] Le vendeur %d me redirige vers ", numero_client, numero_vendeur);
             numero_vendeur = msg.valeur;
             printlog("le vendeur %d\n", numero_vendeur);
+            if (numero_vendeur < 0 || numero_vendeur >= NB_VENDEURS_MAX) {
+                printlog("[Client %d] Erreur : redirection vers un vendeur inexistant !\n", numero_client);
+                exit(EXIT_FAILURE);
+            }
         }
     } while (recommencer);
     // La vente commence
@@ -154,12 +154,10 @@ int main(int argc, char *argv[]){
         // Si la vente aboutie, on se dirige vers un caissier
         printlog("[Client %d] La vente a abouti !\n", numero_client);
 
-        envoyer_msg(id_file_msg, 
-                    NUM_TO_MSG_VENDEUR(numero_vendeur), 
-                    NUM_TO_MSG_CLIENT(numero_client), 
-                    CONFIRMER_VENTE, 
-                    0);
+        envoyer_msg(id_file_msg, numero_vendeur, MSG_VENDEUR, CHOIX_CLIENT, numero_client, CLIENT_CONFIRME_VENTE);
 
+        // Attente de la validation du vendeur avant d'aller vers un caissier
+        msg = recevoir_msg(id_file_msg, numero_client, MSG_CLIENT, FIN_VENTE);
         numero_caissier = chercher_caissier_aleatoire(nb_caissiers);
 
         printlog("[Client %d] Je me dirige vers le caissier %d, j'att qu'il soit dispo\n", numero_client, numero_caissier);
@@ -167,13 +165,9 @@ int main(int argc, char *argv[]){
         P(id_sem_dispo_caissiers, numero_caissier, 1);
 
         printlog("[Client %d] Je donne au caissier %d mon numéro de client\n", numero_client, numero_caissier);
-        envoyer_msg(id_file_msg,
-                    NUM_TO_MSG_CAISSIER(numero_caissier),
-                    NUM_TO_MSG_CLIENT(numero_client),
-                    ENVOYER_NUMERO,
-                    numero_client); // le numéro est déjà stocké dans l'expéditeur mais pas grave
+        envoyer_msg(id_file_msg, numero_caissier, MSG_CAISSIER, ENTREE_CAISSE, numero_client, numero_client); // le numéro est déjà stocké dans l'expéditeur mais pas grave
 
-        msg = recevoir_msg(id_file_msg, NUM_TO_MSG_CLIENT(numero_client));
+        msg = recevoir_msg(id_file_msg, numero_client, MSG_CLIENT, PAIEMENT);
         
         printlog("[Client %d] Le paiement commence...\n", numero_client);
         P(id_sem_paiement, numero_caissier, 1);
@@ -182,12 +176,7 @@ int main(int argc, char *argv[]){
         // Si elle n'aboutie pas
         printlog("[Client %d] La vente n'a pas abouti ...\n", numero_client);
 
-        envoyer_msg(id_file_msg,
-                    NUM_TO_MSG_VENDEUR(numero_vendeur),
-                    NUM_TO_MSG_CLIENT(numero_client),
-                    ANNULER_VENTE,
-                    0
-                );
+        envoyer_msg(id_file_msg, numero_vendeur, MSG_VENDEUR, CHOIX_CLIENT, numero_client, CLIENT_ANNULE_VENTE);
     }
 
     printlog("[Client %d] Je termine...\n", numero_client);

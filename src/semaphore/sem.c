@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <sys/sem.h>
 #include <stdio.h>
+#include <errno.h>
 #include "sem.h"
 #include "cle.h"
 
@@ -65,7 +66,11 @@ int taille_file_sem(int sem_id, int sem) {
     int res;
     res = semctl(sem_id, sem, GETNCNT);
     if (res == -1) {
-        perror("semctl");
+        if (errno == EIDRM || errno == EINVAL) {
+            printf("[Monitoring] La simulation a pris fin. Fermeture...\n"); // comme cette fonction est utilsiée que dans le monitoring, je me permets
+        } else {
+            perror("semctl");
+        }
         exit(EXIT_FAILURE);
     }
     return res;

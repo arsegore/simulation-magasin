@@ -21,6 +21,8 @@
 #define ID_SMP_TRANSACTIONS         8
 #define ID_SEM_VENTE                9
 #define ID_SEM_PAIEMENT             10
+#define ID_SMP_MONITORING           11
+#define ID_MUTEX_MONITORING         12
 
 #define TAILLE_TAB_VENDEUR          sizeof(int) * NB_VENDEURS_MAX
 #define TAILLE_TAB_CLIENT           sizeof(int) * NB_CLIENTS_MAX

@@ -40,4 +40,7 @@ build:
 	mkdir -p build
 
 clean:
-	rm -rf bin build
+	rm -rf bin build cle
+
+clean_logs:
+	rm -rf logs logs.txt

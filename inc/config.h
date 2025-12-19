@@ -31,4 +31,6 @@
 #define EXE_CAISSIER        "bin/caissier"
 #define FICHIER_LOGS        "logs.txt"
 
+#define NB_VAL_LIGNES_MONITORING 15
+
 #endif

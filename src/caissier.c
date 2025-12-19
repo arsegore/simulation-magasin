@@ -11,6 +11,7 @@
 #include "sem.h"
 #include "smp.h"
 #include "logs.h"
+#include "monitoring.h"
 
 int numero_caissier;
 int id_sem_dispo_vendeurs;
@@ -22,6 +23,10 @@ int id_smp_transactions;
 int *adr_smp_transactions;
 message msg;
 sigset_t tout_bloquer, att_sigusr1, att_sigusr2;
+int id_smp_monitoring;
+monit_infos *adr_smp_monitoring;
+int id_mutex_monitoring;
+
 
 void handler_sigusr2(){
     printlog("[Caissier %d] SIGUSR2 reçu\n", numero_caissier);
@@ -35,6 +40,9 @@ void nettoyer(){
     printlog("[Caissier %d] Nettoyage...\n", numero_caissier);
     if (adr_smp_transactions != NULL) {
         detacher_smp(adr_smp_transactions);
+    }
+    if (adr_smp_monitoring != NULL){
+        detacher_smp(adr_smp_monitoring);
     }
 }
 
@@ -73,6 +81,9 @@ int main(int argc, char *argv[]){
     id_sem_dispo_caissiers = init_sem(ID_SEM_CAISSIERS, nb_caissiers, FILS, 0);
     id_smp_transactions = init_smp(TAILLE_TAB_CLIENT, FILS, ID_SMP_TRANSACTIONS);
     adr_smp_transactions = (int *) attacher_smp(id_smp_transactions);
+    id_smp_monitoring = init_smp(sizeof(monit_infos), FILS, ID_SMP_MONITORING);
+    adr_smp_monitoring = (monit_infos *) attacher_smp(id_smp_monitoring);
+    id_mutex_monitoring = init_sem(ID_MUTEX_MONITORING, 1, FILS, 1);
 
     printlog("[Caissier %d] Création...\n", numero_caissier);
 
@@ -109,6 +120,10 @@ int main(int argc, char *argv[]){
             
         // Fin du paiement
         V(id_sem_paiement, numero_caissier, 1);
+
+        P(id_mutex_monitoring, 0, 1);
+        adr_smp_monitoring->total_ventes+= montant;
+        V(id_mutex_monitoring, 0, 1);
 
         // Et au suivant !
         printlog("[Caissier %d] Paiement terminé, au suivant !\n", numero_caissier);

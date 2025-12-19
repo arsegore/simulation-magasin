@@ -9,6 +9,7 @@
 #include "smp.h"
 #include "cle.h"
 #include "logs.h"
+#include "monitoring.h"
 
 #define NETTOYER_ECRAN printf("\e[1;1H\e[2J");
 
@@ -21,20 +22,100 @@ int id_file_msg;
 int id_smp_transactions;
 int *adr_smp_transactions;
 int id_sem_dispo_caissiers;
+int id_smp_monitoring;
+monit_infos *adr_smp_monitoring;
+
+void nettoyer(){
+    if (adr_smp_grimoire != NULL){
+        detacher_smp(adr_smp_grimoire);
+    }
+    if (adr_smp_monitoring != NULL){
+        detacher_smp(adr_smp_monitoring);
+    }
+    if (adr_smp_taux_occupation_vendeurs != NULL){
+        detacher_smp(adr_smp_taux_occupation_vendeurs);
+    }
+    if (adr_smp_transactions != NULL){
+        detacher_smp(adr_smp_transactions);
+    }
+}
+
+void afficher_param(monit_infos *smp){
+    printf("Nombre de clients : %d\n", smp->nb_clients);
+    printf("Nombre de vendeurs : %d\n", smp->nb_vendeurs);
+    printf("Nombre de caissiers : %d\n", smp->nb_caissiers);
+}
+
+void afficher_stats(monit_infos *smp){
+    printf("Nombre de clients entrés : %d\n", smp->clients_entres);
+    printf("Nombre de clients sortis : %d\n", smp->clients_sortis);
+    printf("Montant total des ventes : %d\n", smp->total_ventes);
+}
+
+// Affiche le contenu d'un smp (seulement pour les smp étant gérés comme des tableaux
+// avec un nombre de cases par ligne défini en config. Ca permet de pas briser l'affichage 
+// dès qu'on a pas mal de clients 
+void afficher_contenu_smp(int *smp, int nb, const char *titre) {
+    int j;
+    int limite;
+
+    printf("%s :\n", titre);
+    for (j = 0; j < nb; j += NB_VAL_LIGNES_MONITORING) { 
+        limite = j + NB_VAL_LIGNES_MONITORING;
+        if (limite > nb) {
+            limite = nb;
+        }
+        for (int i = j; i < limite; i++) printf("+-----");
+        printf("+\n");
+        for (int i = j; i < limite; i++){
+            if (smp[i] == -1){
+                printf("|    X");
+            } else {
+                printf("|%5d", smp[i]);
+            }
+        }
+        printf("|\n");
+        for (int i = j; i < limite; i++) printf("+-----");
+        printf("+\n\n");
+    }
+}
+// Idem pour la file de sémaphores (notamment ici les files des caissiers)
+void afficher_contenu_sem(int id_sem, int nb, const char *titre) {
+    int j;
+    int limite;
+
+    printf("%s :\n", titre);
+    for (j = 0; j < nb; j += NB_VAL_LIGNES_MONITORING) {
+        limite = j + NB_VAL_LIGNES_MONITORING;
+        if (limite > nb) {
+            limite = nb;
+        }
+        for (int i = j; i < limite; i++) printf("+-----");
+        printf("+\n");
+        for (int i = j; i < limite; i++) printf("|%5d", taille_file_sem(id_sem, i));
+        printf("|\n");
+        for (int i = j; i < limite; i++) printf("+-----");
+        printf("+\n\n");
+    }
+}
 
 int main(int argc, char **argv) {
-    int i;
     int nb_vendeurs;
     int nb_clients;
     int nb_caissiers;
-    int montant;
 
-    // 1. Récupération des arguments
-    nb_vendeurs = atoi(argv[1]);
-    nb_caissiers = atoi(argv[2]);
-    nb_clients = atoi(argv[3]);
+    atexit(nettoyer);
 
     // Récupération des SMP utilisés par la simulation
+    id_smp_monitoring = init_smp(sizeof(monit_infos), FILS, ID_SMP_MONITORING);
+    adr_smp_monitoring = (monit_infos *) attacher_smp(id_smp_monitoring);
+
+    // On récupère les valeurs dans le SMP 
+    nb_vendeurs = adr_smp_monitoring->nb_vendeurs;
+    nb_clients = adr_smp_monitoring->nb_clients;
+    nb_caissiers = adr_smp_monitoring->nb_caissiers;
+
+    // Le reste des ipc...
     id_smp_taux_occupation_vendeurs = init_smp(TAILLE_TAB_VENDEUR, FILS, ID_SMP_OCCUPATION_VENDEURS);
     adr_smp_taux_occupation_vendeurs = (int *) attacher_smp(id_smp_taux_occupation_vendeurs);
     id_mutex_taux_occupation_vendeurs = init_sem(ID_SEM_MUTEX_OCCUP_V, 1, FILS, 1);
@@ -44,71 +125,25 @@ int main(int argc, char **argv) {
     adr_smp_transactions = (int *) attacher_smp(id_smp_transactions);
     id_sem_dispo_caissiers = init_sem(ID_SEM_CAISSIERS, nb_caissiers, FILS, 0);
 
-    for (;;) { // boucle infinie, à voir si y a plus propre 
-        NETTOYER_ECRAN // nettoyage du terminal pour que l'affichage se fasse tjr sur le "meme" ecran
 
-        printf("Nombre de vendeurs : %d\n", nb_vendeurs);
-        printf("Nombre de clients : %d\n", nb_clients);
-        printf("Nombre de caissiers : %d\n", nb_caissiers);
-        
+
+    for (;;) { 
+        NETTOYER_ECRAN 
+
+        afficher_param(adr_smp_monitoring);
         printf("\n\n\n");
 
-        // Affichage de l'occupation des vendeurs
-        printf("Taille de la file de chaque vendeur :\n");
-        for (i = 0; i < nb_vendeurs; i++){
-            printf("+-----");
-        }
-        printf("+\n");
-        for (i = 0; i < nb_vendeurs; i++){
-            printf("|%5d", adr_smp_taux_occupation_vendeurs[i]);
-        }
-        printf("|\n");
-        for (i = 0; i < nb_vendeurs; i++){
-            printf("+-----");
-        }
-        printf("+\n");
-        printf("\n\n\n");
+        afficher_contenu_smp(adr_smp_taux_occupation_vendeurs, nb_vendeurs, "Taille de la file de chaque vendeur");
 
-        // Affichage de l'occupation des caissiers
-        printf("Taille de la file de chaque caissier :\n");
-        for (i = 0; i < nb_caissiers; i++){
-            printf("+-----");
-        }
-        printf("+\n");
+        afficher_contenu_sem(id_sem_dispo_caissiers, nb_caissiers, "Taille de la file de chaque caissier");
 
-        for (i = 0; i < nb_caissiers; i++){
-            printf("|%5d", taille_file_sem(id_sem_dispo_caissiers, i));
-        }
-        printf("|\n");
+        afficher_contenu_smp(adr_smp_transactions, nb_clients, "Montant des transactions de chaque client");
 
-        for (i = 0; i < nb_caissiers; i++){
-            printf("+-----");
-        }
-        printf("+\n");
-        printf("\n\n\n");
+        afficher_stats(adr_smp_monitoring);
 
-
-        // Affichage des montants de transactions
-        printf("Montant des transactions de chaque client :\n");
-        for (i = 0; i < nb_clients; i++){
-            printf("+-----");
-        }
-        printf("+\n");
-        for (i = 0; i < nb_clients; i++){
-            montant = adr_smp_transactions[i];
-            if (montant == -1){
-                printf("|    X");
-            } else {
-                printf("|%5d", montant);
-            }
-        }
-        printf("|\n");
-        for (i = 0; i < nb_clients; i++){
-            printf("+-----");
-        }
-        printf("+\n");
-
-        usleep(10000);
+        usleep(10000); 
     }
+    
+    exit(EXIT_SUCCESS);
 
 }

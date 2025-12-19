@@ -11,6 +11,7 @@
 #include "sem.h"
 #include "smp.h"
 #include "logs.h"
+#include "monitoring.h"
 
 int numero_client;
 int id_smp_taux_occupation_vendeurs;
@@ -24,10 +25,18 @@ int id_sem_vente;
 int id_sem_paiement;
 message msg;
 sigset_t tout_bloquer, att_sigusr1, att_sigusr2;
+int id_smp_monitoring;
+monit_infos *adr_smp_monitoring;
+int id_mutex_monitoring;
 
 void nettoyer(){
     printlog("[Client %d] Nettoyage...\n", numero_client);
-    detacher_smp(adr_smp_taux_occupation_vendeurs);
+    if (adr_smp_taux_occupation_vendeurs != NULL) {
+        detacher_smp(adr_smp_taux_occupation_vendeurs);
+    }
+    if (adr_smp_monitoring != NULL){
+        detacher_smp(adr_smp_monitoring);
+    }
 }
 
 void handler_sigusr1(){
@@ -59,6 +68,7 @@ int main(int argc, char *argv[]){
     int numero_vendeur;
     int numero_caissier;
     int nb_vendeurs, nb_caissiers;
+    int ancien_numero_vendeur;
 
     numero_client = atoi(argv[1]);
     nb_vendeurs = atoi(argv[2]);
@@ -92,6 +102,11 @@ int main(int argc, char *argv[]){
     id_sem_vente = init_sem(ID_SEM_VENTE, nb_vendeurs, FILS, 0);
     id_sem_paiement = init_sem(ID_SEM_PAIEMENT, nb_caissiers, FILS, 0);
 
+    // 1.5 Les infos du monitoring 
+    id_smp_monitoring = init_smp(sizeof(monit_infos), FILS, ID_SMP_MONITORING);
+    adr_smp_monitoring = (monit_infos *) attacher_smp(id_smp_monitoring);
+    id_mutex_monitoring = init_sem(ID_MUTEX_MONITORING, 1, FILS, 1);
+
     printlog("[Client %d] Création...\n", numero_client);
 
     /**********************
@@ -102,6 +117,9 @@ int main(int argc, char *argv[]){
     // 2. Tirage aléatoire du rayon qui ns intéresse
     srand(time(NULL) * getpid());
     rayon_interet = rand() % NB_RAYONS; // numéro de rayon entre 0 et NB_RAYONS - 1
+    P(id_mutex_monitoring, 0, 1);
+    adr_smp_monitoring->clients_entres++;
+    V(id_mutex_monitoring, 0, 1);
 
     printlog("[Client %d] Démarrage. Je suis intéréssé par le rayon %s\n", numero_client, nom_rayon(rayon_interet));
     
@@ -138,9 +156,9 @@ int main(int argc, char *argv[]){
             printlog("[Client %d] Le vendeur %d est intéressé par le même rayon (%s) ! La vente commence\n", numero_client, numero_vendeur, nom_rayon(rayon_interet));
         } else {
             recommencer = 1;
-            printlog("[Client %d] Le vendeur %d me redirige vers ", numero_client, numero_vendeur);
+            ancien_numero_vendeur = numero_vendeur;
             numero_vendeur = msg.valeur;
-            printlog("le vendeur %d\n", numero_vendeur);
+            printlog("[Client %d] Le vendeur %d me redirige vers le vendeur %d\n", numero_client, ancien_numero_vendeur, numero_vendeur);
             if (numero_vendeur < 0 || numero_vendeur >= NB_VENDEURS_MAX) {
                 printlog("[Client %d] Erreur : redirection vers un vendeur inexistant !\n", numero_client);
                 exit(EXIT_FAILURE);
@@ -178,6 +196,11 @@ int main(int argc, char *argv[]){
 
         envoyer_msg(id_file_msg, numero_vendeur, MSG_VENDEUR, CHOIX_CLIENT, numero_client, CLIENT_ANNULE_VENTE);
     }
+
+    P(id_mutex_monitoring, 0, 1);
+    adr_smp_monitoring->clients_entres--;
+    adr_smp_monitoring->clients_sortis++;
+    V(id_mutex_monitoring, 0, 1);
 
     printlog("[Client %d] Je termine...\n", numero_client);
     exit(EXIT_SUCCESS);

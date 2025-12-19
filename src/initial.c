@@ -7,12 +7,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/wait.h>
 #include "config.h"
 #include "msg.h"
 #include "sem.h"
 #include "smp.h"
 #include "cle.h"
 #include "logs.h"
+#include "monitoring.h"
 
 int id_smp_taux_occupation_vendeurs;
 int *adr_smp_taux_occupation_vendeurs;
@@ -27,6 +29,9 @@ int id_sem_dispo_caissiers;
 int id_sem_vente;
 int id_sem_paiement;
 int id_file_msg;
+int id_smp_monitoring;
+monit_infos *adr_smp_monitoring;
+int id_mutex_monitoring;
 sigset_t att_sigint, tout_bloquer;
 
 void nettoyer(){
@@ -41,14 +46,20 @@ void nettoyer(){
     if (adr_smp_transactions != NULL) {
         detacher_smp(adr_smp_transactions);
     }
+    if (adr_smp_monitoring != NULL) {
+        detacher_smp(adr_smp_monitoring);
+    }
+
     supprimer_smp(id_smp_taux_occupation_vendeurs);
     supprimer_smp(id_smp_grimoire);
     supprimer_smp(id_smp_transactions);
+    supprimer_smp(id_smp_monitoring);
     supprimer_sem(id_mutex_taux_occupation_vendeurs);
     supprimer_sem(id_sem_dispo_vendeurs);
     supprimer_sem(id_sem_dispo_caissiers);
     supprimer_sem(id_sem_vente);
     supprimer_sem(id_sem_paiement);
+    supprimer_sem(id_mutex_monitoring);
     supprimer_file_msg(id_file_msg);
     fin_log();
     exit(EXIT_SUCCESS);
@@ -143,6 +154,18 @@ int main(int argc, char *argv[]){
     // 2.7 Ensemble de sémaphores pour les paiments 
     id_sem_paiement = init_sem(ID_SEM_PAIEMENT, nb_caissiers, PERE, 0);
 
+    // Comme j'ai une marge de temps...
+    // 2.8 SMP d'infos pour le monitoring 
+    id_smp_monitoring = init_smp(sizeof(monit_infos), PERE, ID_SMP_MONITORING);
+    adr_smp_monitoring = (monit_infos *) attacher_smp(id_smp_monitoring);
+    adr_smp_monitoring->nb_caissiers = nb_caissiers;
+    adr_smp_monitoring->nb_clients = nb_clients;
+    adr_smp_monitoring->nb_vendeurs = nb_vendeurs;
+    adr_smp_monitoring->clients_entres = 0;
+    adr_smp_monitoring->clients_sortis = 0;
+    adr_smp_monitoring->total_ventes = 0;
+    // et son mutex
+    id_mutex_monitoring = init_sem(ID_MUTEX_MONITORING, 1, PERE, 1);
 
     /**
      * Lancement des processus 

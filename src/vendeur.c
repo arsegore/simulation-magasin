@@ -25,6 +25,7 @@ int *adr_smp_transactions;
 message msg;
 sigset_t tout_bloquer, att_sigusr1, att_sigusr2;
 
+// le nettoyage se fera via le atexit donc pas besoin d'appeler nettoyer ici
 void handler_sigusr2(){
     printlog("[Vendeur %d] SIGUSR2 reçu\n", numero_vendeur);
     exit(EXIT_SUCCESS);
@@ -33,6 +34,7 @@ void handler_sigusr2(){
 void handler_sigusr1(){
 }
 
+// détachement des SMP utilisées
 void nettoyer(){
     printlog("[Vendeur %d] Nettoyage...\n", numero_vendeur);
     if (adr_smp_grimoire != NULL) {

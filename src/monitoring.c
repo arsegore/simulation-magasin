@@ -25,6 +25,7 @@ int id_sem_dispo_caissiers;
 int id_smp_monitoring;
 monit_infos *adr_smp_monitoring;
 
+// détachemebt des SMP
 void nettoyer(){
     if (adr_smp_grimoire != NULL){
         detacher_smp(adr_smp_grimoire);
@@ -40,6 +41,7 @@ void nettoyer(){
     }
 }
 
+// Affichages de valeurs intéressantes... (plus ou moins ?)
 void afficher_param(monit_infos *smp){
     printf("Nombre de clients : %d\n", smp->nb_clients);
     printf("Nombre de vendeurs : %d\n", smp->nb_vendeurs);
@@ -56,7 +58,7 @@ void afficher_stats(monit_infos *smp){
 // avec un nombre de cases par ligne défini en config. Ca permet de pas briser l'affichage 
 // dès qu'on a pas mal de clients 
 void afficher_contenu_smp(int *smp, int nb, const char *titre) {
-    int j;
+    int i, j;
     int limite;
 
     printf("%s :\n", titre);
@@ -65,9 +67,9 @@ void afficher_contenu_smp(int *smp, int nb, const char *titre) {
         if (limite > nb) {
             limite = nb;
         }
-        for (int i = j; i < limite; i++) printf("+-----");
+        for (i = j; i < limite; i++) printf("+-----");
         printf("+\n");
-        for (int i = j; i < limite; i++){
+        for (i = j; i < limite; i++){
             if (smp[i] == -1){
                 printf("|    X");
             } else {
@@ -75,13 +77,13 @@ void afficher_contenu_smp(int *smp, int nb, const char *titre) {
             }
         }
         printf("|\n");
-        for (int i = j; i < limite; i++) printf("+-----");
+        for (i = j; i < limite; i++) printf("+-----");
         printf("+\n\n");
     }
 }
 // Idem pour la file de sémaphores (notamment ici les files des caissiers)
 void afficher_contenu_sem(int id_sem, int nb, const char *titre) {
-    int j;
+    int i, j;
     int limite;
 
     printf("%s :\n", titre);
@@ -90,11 +92,11 @@ void afficher_contenu_sem(int id_sem, int nb, const char *titre) {
         if (limite > nb) {
             limite = nb;
         }
-        for (int i = j; i < limite; i++) printf("+-----");
+        for (i = j; i < limite; i++) printf("+-----");
         printf("+\n");
-        for (int i = j; i < limite; i++) printf("|%5d", taille_file_sem(id_sem, i));
+        for (i = j; i < limite; i++) printf("|%5d", taille_file_sem(id_sem, i));
         printf("|\n");
-        for (int i = j; i < limite; i++) printf("+-----");
+        for (i = j; i < limite; i++) printf("+-----");
         printf("+\n\n");
     }
 }
@@ -126,10 +128,11 @@ int main(int argc, char **argv) {
     id_sem_dispo_caissiers = init_sem(ID_SEM_CAISSIERS, nb_caissiers, FILS, 0);
 
 
-
+    // Boucle infinie tant qu'on interrompt pas le monitoring
     for (;;) { 
-        NETTOYER_ECRAN 
+        NETTOYER_ECRAN // replace l'affichage au centre de l'écran pour ne pas voir le rafraichissement
 
+        // Affichage des infos...
         afficher_param(adr_smp_monitoring);
         printf("\n\n\n");
 

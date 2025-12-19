@@ -29,6 +29,7 @@ int id_smp_monitoring;
 monit_infos *adr_smp_monitoring;
 int id_mutex_monitoring;
 
+// détache les SMP...
 void nettoyer(){
     printlog("[Client %d] Nettoyage...\n", numero_client);
     if (adr_smp_taux_occupation_vendeurs != NULL) {

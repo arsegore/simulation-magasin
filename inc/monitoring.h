@@ -1,6 +1,7 @@
 #ifndef _MONITORING_H_
 #define _MONITORING_H_
 
+// qlq valeurs utiles pour le monitoring
 typedef struct {
     int     nb_clients;
     int     nb_vendeurs;

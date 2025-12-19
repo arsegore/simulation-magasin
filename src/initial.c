@@ -34,6 +34,7 @@ monit_infos *adr_smp_monitoring;
 int id_mutex_monitoring;
 sigset_t att_sigint, tout_bloquer;
 
+// Détache les SMP puis supprime toutes les IPC
 void nettoyer(){
     usleep(10000);
     printlog("[Initial] Nettoyage...\n");

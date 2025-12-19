@@ -16,52 +16,66 @@
 #include "logs.h"
 #include "monitoring.h"
 
-int id_smp_taux_occupation_vendeurs;
-int *adr_smp_taux_occupation_vendeurs;
-int id_mutex_taux_occupation_vendeurs;
-int id_smp_grimoire;
-int *adr_smp_grimoire;
-int id_smp_transactions;
-int *adr_smp_transactions;
-int id_msg_vendeur_client;
-int id_sem_dispo_vendeurs;
-int id_sem_dispo_caissiers;
-int id_sem_vente;
-int id_sem_paiement;
-int id_file_msg;
-int id_smp_monitoring;
-monit_infos *adr_smp_monitoring;
-int id_mutex_monitoring;
+int id_smp_taux_occupation_vendeurs = -1;
+int *adr_smp_taux_occupation_vendeurs = NULL;
+int id_mutex_taux_occupation_vendeurs = -1;
+int id_smp_grimoire = -1;
+int *adr_smp_grimoire = NULL;
+int id_smp_transactions = -1;
+int *adr_smp_transactions = NULL;
+int id_msg_vendeur_client = -1;
+int id_sem_dispo_vendeurs = -1;
+int id_sem_dispo_caissiers= -1;
+int id_sem_vente = -1;
+int id_sem_paiement = -1;
+int id_file_msg = -1;
+int id_smp_monitoring = -1;
+monit_infos *adr_smp_monitoring = NULL;
+int id_mutex_monitoring = -1;
 sigset_t att_sigint, tout_bloquer;
 
 // Détache les SMP puis supprime toutes les IPC
+// On vérifie l'état des ipc avant de les supprimer pour ne pas avoir les perror
 void nettoyer(){
     usleep(10000);
     printlog("[Initial] Nettoyage...\n");
     if (adr_smp_taux_occupation_vendeurs != NULL){
         detacher_smp(adr_smp_taux_occupation_vendeurs);
+        supprimer_smp(id_smp_taux_occupation_vendeurs);
     }
     if (adr_smp_grimoire != NULL) {
         detacher_smp(adr_smp_grimoire);
+        supprimer_smp(id_smp_grimoire);
     }
     if (adr_smp_transactions != NULL) {
         detacher_smp(adr_smp_transactions);
+        supprimer_smp(id_smp_transactions);
     }
     if (adr_smp_monitoring != NULL) {
         detacher_smp(adr_smp_monitoring);
+        supprimer_smp(id_smp_monitoring);
     }
-
-    supprimer_smp(id_smp_taux_occupation_vendeurs);
-    supprimer_smp(id_smp_grimoire);
-    supprimer_smp(id_smp_transactions);
-    supprimer_smp(id_smp_monitoring);
-    supprimer_sem(id_mutex_taux_occupation_vendeurs);
-    supprimer_sem(id_sem_dispo_vendeurs);
-    supprimer_sem(id_sem_dispo_caissiers);
-    supprimer_sem(id_sem_vente);
-    supprimer_sem(id_sem_paiement);
-    supprimer_sem(id_mutex_monitoring);
-    supprimer_file_msg(id_file_msg);
+    if (id_mutex_taux_occupation_vendeurs != -1){
+        supprimer_sem(id_mutex_taux_occupation_vendeurs);
+    }
+    if (id_sem_dispo_vendeurs != -1){
+        supprimer_sem(id_sem_dispo_vendeurs);
+    }
+    if (id_sem_dispo_caissiers != -1){
+        supprimer_sem(id_sem_dispo_caissiers);
+    }
+    if (id_sem_vente != -1){
+        supprimer_sem(id_sem_vente);
+    }
+    if (id_sem_paiement != -1){
+        supprimer_sem(id_sem_paiement);
+    }
+    if (id_mutex_monitoring != -1){
+        supprimer_sem(id_mutex_monitoring);
+    }
+    if (id_file_msg != -1){
+        supprimer_file_msg(id_file_msg);
+    }
     fin_log();
     exit(EXIT_SUCCESS);
 }
@@ -71,6 +85,9 @@ void ne_rien_faire(){
 
 void usage(){
     printf("Usage: ./initial <nb_vendeurs> <nb_caissiers> <nb_clients>\n");
+    printf("Nombre max de vendeurs : %d\n", NB_VENDEURS_MAX);
+    printf("Nombre max de caissiers : %d\n", NB_CAISSIERS_MAX);
+    printf("Nombre max de clients : %d\n", NB_CLIENTS_MAX);
     exit(EXIT_FAILURE);
 }
 
@@ -108,6 +125,25 @@ int main(int argc, char *argv[]){
     // 1.1 Vérif
     if (nb_vendeurs < NB_RAYONS) {
         printf("Il faut au moins %d vendeurs. (1 par rayon)\n", NB_RAYONS);
+        exit(EXIT_FAILURE);
+    }
+    if (nb_vendeurs <= 0 || nb_caissiers <= 0 || nb_clients <=0){
+        printf("Les 3 arguments doivent être positifs\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (nb_vendeurs > NB_VENDEURS_MAX){
+        printf("Le nombre maximal de vendeurs est de %d\n", NB_VENDEURS_MAX);
+        exit(EXIT_FAILURE);
+    }
+
+    if (nb_caissiers > NB_CAISSIERS_MAX){
+        printf("Le nombre maximal de caissiers est de %d\n", NB_CAISSIERS_MAX);
+        exit(EXIT_FAILURE);
+    }
+
+    if (nb_clients > NB_CLIENTS_MAX){
+        printf("Le nombre maximal de clients est de %d\n", NB_CLIENTS_MAX);
         exit(EXIT_FAILURE);
     }
 

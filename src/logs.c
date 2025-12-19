@@ -47,7 +47,6 @@ void printlog(const char *msg, ...){
     va_end(args1);
     va_end(args2);
 
-    usleep(100000);
 }
 
 void fin_log(){

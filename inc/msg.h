@@ -1,9 +1,11 @@
 #ifndef _MSG_H_
 #define _MSG_H_
 
-// Permet de stocker dans mtype le numéro destinataire + son type 
-// Pour le vendeur 32, on stockera 1032. Le client qui attend un msg
-// du vendeur 32 attendra donc un msg de mtype 32 + MSG_VENDEUR (1000) = 1032
+
+// Type du message = NUMERO + TYPE + OPERATION 
+// Ca permet d'avoir un code unique pour attendre un message
+// Par ex, le vendeur 21 attend le choix d'un client
+// il va attendre un msg de mtype = 21 + MSG_VENDEUR + FIN_VENTE
 #define MSG_VENDEUR     1000
 #define MSG_CAISSIER    2000
 #define MSG_CLIENT      3000
@@ -24,7 +26,7 @@
 
 // Une seule structure générique pour tous les messages
 typedef struct {
-    long    mtype;          // Num. destinataire + MSG_X
+    long    mtype;
     int     qui_envoie;
     int     valeur;
 } message;

@@ -15,4 +15,6 @@ int init_sem(int id, int nb_sem, int qui, int val_init);
 
 void supprimer_sem(int id_sem);
 
+int taille_file_sem(int sem_id, int sem);
+
 #endif

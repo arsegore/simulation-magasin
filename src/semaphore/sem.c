@@ -60,3 +60,13 @@ void supprimer_sem(int sem_id) {
         exit(EXIT_FAILURE);
     }
 }
+
+int taille_file_sem(int sem_id, int sem) {
+    int res;
+    res = semctl(sem_id, sem, GETNCNT);
+    if (res == -1) {
+        perror("semctl");
+        exit(EXIT_FAILURE);
+    }
+    return res;
+}
